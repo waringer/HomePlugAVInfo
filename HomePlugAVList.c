@@ -5,20 +5,18 @@
 	All rights reserved.
 */
 
-#include <sys/types.h>
 #include <sys/time.h>
 #include <sys/ioctl.h>
 #include <net/bpf.h>
 #include <sys/socket.h>
 #include <net/if.h>
 #include <stdio.h>
-#include <sys/uio.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <stdlib.h>
 #include <string.h>
 
-#define HomePlugAVList_VERSION "0.0.1.0"
+#define HomePlugAVList_VERSION "0.0.1.1"
 
 static char AtherosMac[6]	= {0x00, 0xb0, 0x52, 0x00, 0x00, 0x01};
 //static char BroadcastMac[6]	= {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
@@ -69,7 +67,6 @@ struct NetInfo
 };
 
 u_short ex_word(u_char *ptr) {return ntohs(*((u_short*)ptr));}
-u_long ex_long(u_char *ptr) {return ntohl(*((u_long*)ptr));}
 
 char *format_mac_addr(u_char *addr, char *macbuf)
 {
@@ -207,7 +204,6 @@ int GetNetworkInfo(struct NetFrame net, u_int waittime, struct NetInfo *Net)
 	if (0 != frameptr)
 	{
 	    u_int	i, j;
-	    char	macbuf[20];
 
 	    framepos = 20;
 	    Net->NetworkCount = frameptr[framepos++];
@@ -327,7 +323,7 @@ void usage(void) {
 void ParseOptions(int argc, char *argv[], char *bpfn, char *ifname, u_char *DeviceMac, u_int *TryCount)
 {
 	int ch, i;
-	u_char mac[17];
+	u_char mac[18];
 	
 	/* Parse command line options */
 	while ((ch = getopt(argc, argv, "b:m:c:h")) != -1) {
@@ -337,18 +333,19 @@ void ParseOptions(int argc, char *argv[], char *bpfn, char *ifname, u_char *Devi
 				strncpy(bpfn, optarg, 32);
 				break;
 			case 'c':
-				sscanf(optarg, "%u", TryCount);
+				sscanf(optarg, "%3u", TryCount);
 				break;
 			case 'm':
 				strncpy(mac, optarg, 17);
+				mac[17] = 0;
 //				fprintf(stderr, "l:%u", strlen(mac));
-				if (strlen(mac) == 18) //todo why 18 ?
+				if (strlen(mac) == 17)
 				{
 				    if (strchr(mac, ':') != NULL)
-					sscanf(mac, "%hhx:%hhx:%hhx:%hhx:%hhx:%hhx", (u_char *)&DeviceMac[0], (u_char *)&DeviceMac[1], (u_char *)&DeviceMac[2], (u_char *)&DeviceMac[3], (u_char *)&DeviceMac[4], (u_char *)&DeviceMac[5]);
+					sscanf(mac, "%1h1hx:%1h1hx:%1h1hx:%1h1hx:%1h1hx:%1h1hx", (u_char *)&DeviceMac[0], (u_char *)&DeviceMac[1], (u_char *)&DeviceMac[2], (u_char *)&DeviceMac[3], (u_char *)&DeviceMac[4], (u_char *)&DeviceMac[5]);
 				    else
 					if (strchr(mac, '-') != NULL)
-					    sscanf(mac, "%hhx-%hhx-%hhx-%hhx-%hhx-%hhx", (u_char *)&DeviceMac[0], (u_char *)&DeviceMac[1], (u_char *)&DeviceMac[2], (u_char *)&DeviceMac[3], (u_char *)&DeviceMac[4], (u_char *)&DeviceMac[5]);
+					    sscanf(mac, "%1h1hx-%1h1hx-%1h1hx-%1h1hx-%1h1hx-%1h1hx", (u_char *)&DeviceMac[0], (u_char *)&DeviceMac[1], (u_char *)&DeviceMac[2], (u_char *)&DeviceMac[3], (u_char *)&DeviceMac[4], (u_char *)&DeviceMac[5]);
 				}
 				else
 				    if (strlen(mac) == 12)
@@ -357,7 +354,8 @@ void ParseOptions(int argc, char *argv[], char *bpfn, char *ifname, u_char *Devi
 					for(i = 0; i < 6; i++)
 					{
 					    strncpy(digit, &mac[i * 2], 2);
-					    sscanf(digit, "%hhx", (u_char *)&DeviceMac[i]);
+					    digit[2] = 0;
+					    sscanf(digit, "%1h1hx", (u_char *)&DeviceMac[i]);
 					}
 				    }
 				    
@@ -390,7 +388,6 @@ int main(int argc, char *argv[]) {
 	u_char	SenderMac[6] = {0,0,0,0,0,0};
 	char	DeviceVersion[200];
 	char	macbuf[20];
-	char	NetID_Buffer[23];
 	u_int	TryCounter = 1;
 	u_int	MaxTrys = 5;
 	u_int	i, j;
@@ -402,7 +399,7 @@ int main(int argc, char *argv[]) {
 	do
 	{
 		SendDeviceVersion(net.netfd, SenderMac);
-	} while (!GetDeviceVersion(net, 1000000, SenderMac, DeviceVersion) & (TryCounter++ < MaxTrys));
+	} while (!GetDeviceVersion(net, 1000000, SenderMac, DeviceVersion) && (TryCounter++ < MaxTrys));
 
 
 	if ((SenderMac[0] != 0) & (SenderMac[1] != 0) & (SenderMac[2] != 0) & (SenderMac[3] != 0) & (SenderMac[4] != 0) & (SenderMac[5] != 0))
@@ -414,11 +411,13 @@ int main(int argc, char *argv[]) {
 	    do
 	    {
 		SendNetworkInfo(net.netfd, SenderMac);
-	    } while (!GetNetworkInfo(net, 1000000, &HomePlugNetInfo) & (TryCounter++ < MaxTrys));
+	    } while (!GetNetworkInfo(net, 1000000, &HomePlugNetInfo) && (TryCounter++ < MaxTrys));
 	}
 
 	if (HomePlugNetInfo.NetworkCount != 0)
 	{
+	    char	NetID_Buffer[23];
+
 	    printf("- Network count :\t\t\t%02x\n", HomePlugNetInfo.NetworkCount);
 	    for(i = 0; i < HomePlugNetInfo.NetworkCount; i++)
 	    {
