@@ -16,7 +16,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define HomePlugAVList_VERSION "0.0.1.1"
+#define HomePlugAVList_VERSION "0.0.1.2"
 
 static char AtherosMac[6]	= {0x00, 0xb0, 0x52, 0x00, 0x00, 0x01};
 //static char BroadcastMac[6]	= {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
@@ -107,7 +107,7 @@ void SendDeviceVersion(int netfd, char *DeviceMac)
 	u_int i;
 	u_char outframe[64];
 	
-	if ((DeviceMac[0] == 0) & (DeviceMac[1] == 0) & (DeviceMac[2] == 0) & (DeviceMac[3] == 0) & (DeviceMac[4] == 0) & (DeviceMac[5] == 0))
+	if ((DeviceMac[0] == 0) && (DeviceMac[1] == 0) && (DeviceMac[2] == 0) && (DeviceMac[3] == 0) && (DeviceMac[4] == 0) && (DeviceMac[5] == 0))
 	    BuildSendBaseFrame(&outframe[0], AtherosMac);
 	else
 	    BuildSendBaseFrame(&outframe[0], DeviceMac);
@@ -151,7 +151,7 @@ u_char* GetNetworkAnswer(struct NetFrame net, u_int waittime, ushort ReqType)
 	struct	timeval timeout;
 
 	u_char	*frameptr;
-	int		sec;
+	int		sec = 0;
 	fd_set	set;
 
 	FD_ZERO(&set); /* clear the set */
@@ -199,13 +199,12 @@ int GetDeviceVersion(struct NetFrame net, u_int waittime, char *mac, char *Devic
 int GetNetworkInfo(struct NetFrame net, u_int waittime, struct NetInfo *Net)
 {
 	/* read responses */
-	u_int	framepos;
+	u_int	framepos = 20;
 	u_char	*frameptr = GetNetworkAnswer(net, waittime, 0x39a0);
 	if (0 != frameptr)
 	{
 	    u_int	i, j;
 
-	    framepos = 20;
 	    Net->NetworkCount = frameptr[framepos++];
 	    if (Net->NetworkCount >= 1)
 	    {
@@ -267,6 +266,7 @@ void SetupNetDevice(char *bpfn, struct NetFrame *net, char *ifname)
 	}
 
 	/* Bind to interface */
+	memset(&ifr,0,sizeof(ifr)); //init struct the lazy way
 	strcpy(ifr.ifr_name, ifname);
 
 	if (ioctl(net->netfd, BIOCSETIF, &ifr) == -1) {
@@ -342,10 +342,10 @@ void ParseOptions(int argc, char *argv[], char *bpfn, char *ifname, u_char *Devi
 				if (strlen(mac) == 17)
 				{
 				    if (strchr(mac, ':') != NULL)
-					sscanf(mac, "%1h1hx:%1h1hx:%1h1hx:%1h1hx:%1h1hx:%1h1hx", (u_char *)&DeviceMac[0], (u_char *)&DeviceMac[1], (u_char *)&DeviceMac[2], (u_char *)&DeviceMac[3], (u_char *)&DeviceMac[4], (u_char *)&DeviceMac[5]);
+					sscanf(mac, "%hh2x:%hh2x:%hh2x:%hh2x:%hh2x:%hh2x", &DeviceMac[0], &DeviceMac[1], &DeviceMac[2], &DeviceMac[3], &DeviceMac[4], &DeviceMac[5]);
 				    else
 					if (strchr(mac, '-') != NULL)
-					    sscanf(mac, "%1h1hx-%1h1hx-%1h1hx-%1h1hx-%1h1hx-%1h1hx", (u_char *)&DeviceMac[0], (u_char *)&DeviceMac[1], (u_char *)&DeviceMac[2], (u_char *)&DeviceMac[3], (u_char *)&DeviceMac[4], (u_char *)&DeviceMac[5]);
+					    sscanf(mac, "%hh2x-%hh2x-%hh2x-%hh2x-%hh2x-%hh2x", &DeviceMac[0], &DeviceMac[1], &DeviceMac[2], &DeviceMac[3], &DeviceMac[4], &DeviceMac[5]);
 				}
 				else
 				    if (strlen(mac) == 12)
@@ -355,7 +355,7 @@ void ParseOptions(int argc, char *argv[], char *bpfn, char *ifname, u_char *Devi
 					{
 					    strncpy(digit, &mac[i * 2], 2);
 					    digit[2] = 0;
-					    sscanf(digit, "%1h1hx", (u_char *)&DeviceMac[i]);
+					    sscanf(digit, "%hh2x", (u_char *)&DeviceMac[i]);
 					}
 				    }
 				    
@@ -383,14 +383,16 @@ int main(int argc, char *argv[]) {
 	struct	NetFrame	net;
 	struct	NetInfo		HomePlugNetInfo;
 
-	char	ifname[8];
+	char	ifname[8] = "";
 	char	bpfn[32] = "/dev/bpf0";
 	u_char	SenderMac[6] = {0,0,0,0,0,0};
-	char	DeviceVersion[200];
-	char	macbuf[20];
+	char	DeviceVersion[200] = "";
+	char	macbuf[20] = "";
 	u_int	TryCounter = 1;
 	u_int	MaxTrys = 5;
 	u_int	i, j;
+
+	HomePlugNetInfo.NetworkCount = 0;
 
 	ParseOptions(argc, argv, bpfn, ifname, SenderMac, &MaxTrys);
 
@@ -402,7 +404,7 @@ int main(int argc, char *argv[]) {
 	} while (!GetDeviceVersion(net, 1000000, SenderMac, DeviceVersion) && (TryCounter++ < MaxTrys));
 
 
-	if ((SenderMac[0] != 0) & (SenderMac[1] != 0) & (SenderMac[2] != 0) & (SenderMac[3] != 0) & (SenderMac[4] != 0) & (SenderMac[5] != 0))
+	if ((SenderMac[0] != 0) || (SenderMac[1] != 0) || (SenderMac[2] != 0) || (SenderMac[3] != 0) || (SenderMac[4] != 0) || (SenderMac[5] != 0))
 	{
 	    printf("- Device MAC :\t\t\t\t%s\n", format_mac_addr(SenderMac, macbuf));
 	    printf("- Device Version :\t\t\t%s\n", DeviceVersion);
@@ -416,7 +418,7 @@ int main(int argc, char *argv[]) {
 
 	if (HomePlugNetInfo.NetworkCount != 0)
 	{
-	    char	NetID_Buffer[23];
+	    char	NetID_Buffer[23] = "";
 
 	    printf("- Network count :\t\t\t%02x\n", HomePlugNetInfo.NetworkCount);
 	    for(i = 0; i < HomePlugNetInfo.NetworkCount; i++)
@@ -437,6 +439,10 @@ int main(int argc, char *argv[]) {
 		    printf("- Network %02u Station %02u AvgPhyRX Rate :\t%02x\n", i, j, HomePlugNetInfo.Networks[i].Stations[j].AvgPhyRXRate);
 		}
 	    }
+	}
+	else
+	{
+	    printf("No devices found!\n");
 	}
 
 	/* Free memory */
