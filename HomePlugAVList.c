@@ -310,23 +310,24 @@ void usage(void) {
 	
 	printf("%s",
 	       "\nHomePlug-AV Device List version " HomePlugAVList_VERSION " by Holger Wolff <waringer@gmail.com>\n\n"
-	       "Usage:   HomePlugAVList [-h] [-b device] [-m mac] [-c count] interface\n\n"
+	       "Usage:   HomePlugAVList [-h] [-n] [-b device] [-m mac] [-c count] interface\n\n"
 	
 		   "	-b device	use device (default is /dev/bpf0)\n"
 		   "	-m mac		mac to use (default is to search for a mac)\n"
 		   "	-c count	how many times try to connect if no response is received (default is 5)\n"
+		   "	-n				Nagios compatible output\n"
 		   "	-h		display this help\n\n"
 		   
 		   "         ...\n\n");
 }
 
-void ParseOptions(int argc, char *argv[], char *bpfn, char *ifname, u_char *DeviceMac, u_int *TryCount)
+void ParseOptions(int argc, char *argv[], char *bpfn, char *ifname, u_char *DeviceMac, u_int *TryCount, int *UseNagiosFormat)
 {
 	int ch, i;
 	u_char mac[18];
 	
 	/* Parse command line options */
-	while ((ch = getopt(argc, argv, "b:m:c:h")) != -1) {
+	while ((ch = getopt(argc, argv, "b:m:c:hn")) != -1) {
 	 
 		 switch (ch) {
 			case 'b':
@@ -334,6 +335,9 @@ void ParseOptions(int argc, char *argv[], char *bpfn, char *ifname, u_char *Devi
 				break;
 			case 'c':
 				sscanf(optarg, "%3u", TryCount);
+				break;
+			case 'n':
+				*UseNagiosFormat = 1;
 				break;
 			case 'm':
 				strncpy(mac, optarg, 17);
@@ -389,12 +393,14 @@ int main(int argc, char *argv[]) {
 	char	DeviceVersion[200] = "";
 	char	macbuf[20] = "";
 	u_int	TryCounter = 1;
+	int		UseNagiosFormat = 0;
+	int		ExitCode = 0;
 	u_int	MaxTrys = 5;
 	u_int	i, j;
 
 	HomePlugNetInfo.NetworkCount = 0;
 
-	ParseOptions(argc, argv, bpfn, ifname, SenderMac, &MaxTrys);
+	ParseOptions(argc, argv, bpfn, ifname, SenderMac, &MaxTrys, &UseNagiosFormat);
 
 	SetupNetDevice(bpfn, &net, ifname);
 
@@ -406,8 +412,11 @@ int main(int argc, char *argv[]) {
 
 	if ((SenderMac[0] != 0) || (SenderMac[1] != 0) || (SenderMac[2] != 0) || (SenderMac[3] != 0) || (SenderMac[4] != 0) || (SenderMac[5] != 0))
 	{
+		if (0 == UseNagiosFormat)
+			{
 	    printf("- Device MAC :\t\t\t\t%s\n", format_mac_addr(SenderMac, macbuf));
 	    printf("- Device Version :\t\t\t%s\n", DeviceVersion);
+	  }
 
 	    TryCounter = 1;
 	    do
@@ -420,6 +429,8 @@ int main(int argc, char *argv[]) {
 	{
 	    char	NetID_Buffer[23] = "";
 
+	    if (0 == UseNagiosFormat)
+	    	{
 	    printf("- Network count :\t\t\t%02x\n", HomePlugNetInfo.NetworkCount);
 	    for(i = 0; i < HomePlugNetInfo.NetworkCount; i++)
 	    {
@@ -439,10 +450,20 @@ int main(int argc, char *argv[]) {
 		    printf("- Network %02u Station %02u AvgPhyRX Rate :\t%02x\n", i, j, HomePlugNetInfo.Networks[i].Stations[j].AvgPhyRXRate);
 		}
 	    }
+	  }
+	  else
+	  	{
+	  		printf("OK - [%s]\n", DeviceVersion);
+	  	}
 	}
 	else
 	{
-	    printf("No devices found!\n");
+	    if (0 == UseNagiosFormat)
+	    	printf("No devices found!\n");
+	    else
+	    	printf("CRITICAL - No devices found!\n");
+	    	
+	    ExitCode = 2;
 	}
 
 	/* Free memory */
@@ -454,4 +475,6 @@ int main(int argc, char *argv[]) {
 	    free(HomePlugNetInfo.Networks);
 
 	CloseNetDevice(&net);
+	
+	exit(ExitCode);
 }
