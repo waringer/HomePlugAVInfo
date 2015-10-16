@@ -1,7 +1,7 @@
 /*
-	HomePlugAVList.c version 0.0.1.0
+	HomePlugAVList.c version 0.0.1.4
 
-	Copyright (C) 2013 Holger Wolff <waringer@gmail.com>.
+	Copyright (C) 2013-2015 Holger Wolff <waringer@gmail.com>.
 	All rights reserved.
 */
 
@@ -16,7 +16,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define HomePlugAVList_VERSION "0.0.1.2"
+#define HomePlugAVList_VERSION "0.0.1.4"
 
 static char AtherosMac[6]	= {0x00, 0xb0, 0x52, 0x00, 0x00, 0x01};
 //static char BroadcastMac[6]	= {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
@@ -65,8 +65,6 @@ struct NetInfo
 	u_int	NetworkCount;
 	struct	NetworkInfo *Networks;
 };
-
-u_short ex_word(u_char *ptr) {return ntohs(*((u_short*)ptr));}
 
 char *format_mac_addr(u_char *addr, char *macbuf)
 {
@@ -124,6 +122,28 @@ void SendDeviceVersion(int netfd, char *DeviceMac)
 	write(netfd, outframe, 64);
 }
 
+void SendDeviceReset(int netfd, char *DeviceMac)
+{
+	u_int i;
+	u_char outframe[64];
+	
+	if ((DeviceMac[0] == 0) && (DeviceMac[1] == 0) && (DeviceMac[2] == 0) && (DeviceMac[3] == 0) && (DeviceMac[4] == 0) && (DeviceMac[5] == 0))
+	    BuildSendBaseFrame(&outframe[0], AtherosMac);
+	else
+	    BuildSendBaseFrame(&outframe[0], DeviceMac);
+
+	/* MAC Management Header */
+	outframe[14] = 0x00; // Version 1
+	outframe[15] = 0x1c; // Device/SW Reset Request
+	outframe[16] = 0xa0;
+
+	for (i = 20; i < 64; i++)
+		outframe[i] = 0x00;	/* fill */
+
+	/* write out packet */
+	write(netfd, outframe, 64);
+}
+
 void SendNetworkInfo(int netfd, char *DeviceMac)
 {
 	u_int i;
@@ -171,7 +191,7 @@ u_char* GetNetworkAnswer(struct NetFrame net, u_int waittime, ushort ReqType)
 			header = (struct bpf_hdr*)net.framebuf;
 			frameptr = net.framebuf + header->bh_hdrlen;
 
-			if (ReqType == ex_word(&frameptr[15]))
+			if (ReqType == (frameptr[15]<<8) + frameptr[16])
 				return frameptr;
 		}
 
@@ -190,6 +210,7 @@ int GetDeviceVersion(struct NetFrame net, u_int waittime, char *mac, char *Devic
 	{
 	    memcpy(DeviceVerion, &frameptr[23], frameptr[22]);
 	    memcpy(mac, &frameptr[6], 6);
+
 	    return 1;
 	}
 
@@ -314,20 +335,21 @@ void usage(void) {
 	
 		   "	-b device	use device (default is /dev/bpf0)\n"
 		   "	-m mac		mac to use (default is to search for a mac)\n"
+		   "	-r		reset device\n"
 		   "	-c count	how many times try to connect if no response is received (default is 5)\n"
-		   "	-n				Nagios compatible output\n"
+		   "	-n		Nagios compatible output\n"
 		   "	-h		display this help\n\n"
 		   
 		   "         ...\n\n");
 }
 
-void ParseOptions(int argc, char *argv[], char *bpfn, char *ifname, u_char *DeviceMac, u_int *TryCount, int *UseNagiosFormat)
+void ParseOptions(int argc, char *argv[], char *bpfn, char *ifname, u_char *DeviceMac, u_int *TryCount, int *UseNagiosFormat, int *ResetDevice)
 {
 	int ch, i;
 	u_char mac[18];
 	
 	/* Parse command line options */
-	while ((ch = getopt(argc, argv, "b:m:c:hn")) != -1) {
+	while ((ch = getopt(argc, argv, "b:m:c:hnr")) != -1) {
 	 
 		 switch (ch) {
 			case 'b':
@@ -338,6 +360,9 @@ void ParseOptions(int argc, char *argv[], char *bpfn, char *ifname, u_char *Devi
 				break;
 			case 'n':
 				*UseNagiosFormat = 1;
+				break;
+			case 'r':
+				*ResetDevice = 1;
 				break;
 			case 'm':
 				strncpy(mac, optarg, 17);
@@ -394,13 +419,14 @@ int main(int argc, char *argv[]) {
 	char	macbuf[20] = "";
 	u_int	TryCounter = 1;
 	int		UseNagiosFormat = 0;
+	int		ResetDevice = 0;
 	int		ExitCode = 0;
 	u_int	MaxTrys = 5;
 	u_int	i, j;
 
 	HomePlugNetInfo.NetworkCount = 0;
 
-	ParseOptions(argc, argv, bpfn, ifname, SenderMac, &MaxTrys, &UseNagiosFormat);
+	ParseOptions(argc, argv, bpfn, ifname, SenderMac, &MaxTrys, &UseNagiosFormat, &ResetDevice);
 
 	SetupNetDevice(bpfn, &net, ifname);
 
@@ -423,6 +449,12 @@ int main(int argc, char *argv[]) {
 	    {
 		SendNetworkInfo(net.netfd, SenderMac);
 	    } while (!GetNetworkInfo(net, 1000000, &HomePlugNetInfo) && (TryCounter++ < MaxTrys));
+	    
+	    if (0 != ResetDevice)
+	    {
+		SendDeviceReset(net.netfd, SenderMac);
+		printf("- Device Reset send\n");
+	    }
 	}
 
 	if (HomePlugNetInfo.NetworkCount != 0)
