@@ -1,7 +1,7 @@
 /*
-	HomePlugAVList.c version 0.0.1.5
+	HomePlugAVList.c version 0.0.1.6
 
-	Copyright (C) 2013-2015 Holger Wolff <waringer@gmail.com>.
+	Copyright (C) 2013-2025 Holger Wolff <waringer@gmail.com>.
 	All rights reserved.
 */
 
@@ -16,10 +16,9 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define HomePlugAVList_VERSION "0.0.1.5"
+#define HomePlugAVList_VERSION "0.0.1.6"
 
-static char AtherosMac[6] = {0x00, 0xb0, 0x52, 0x00, 0x00, 0x01};
-// static char BroadcastMac[6]	= {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
+static u_char AtherosMac[6] = {0x00, 0xb0, 0x52, 0x00, 0x00, 0x01};
 static char HomePlugAVType[2] = {0x88, 0xe1};
 static char AtherosVendor[3] = {0x00, 0xb0, 0x52};
 
@@ -34,7 +33,6 @@ struct NetFrame
 struct bpf_insn insns[] = {
 	BPF_STMT(BPF_LD + BPF_H + BPF_ABS, 12),
 	BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, 0x88e1, 0, 1),
-	//	 BPF_JUMP(BPF_JMP+BPF_JEQ+BPF_K, HomePlugAVType, 0, 1),
 	BPF_STMT(BPF_RET + BPF_K, (u_int)-1),
 	BPF_STMT(BPF_RET + BPF_K, 0)};
 
@@ -77,7 +75,7 @@ char *format_net_id(u_char *netid, char *NetworkID)
 	return NetworkID;
 }
 
-void BuildSendBaseFrame(u_char *outframe, char *DestMac)
+void BuildSendBaseFrame(u_char *outframe, u_char *DestMac)
 {
 	u_int i;
 
@@ -99,7 +97,7 @@ void BuildSendBaseFrame(u_char *outframe, char *DestMac)
 	memcpy(&outframe[17], AtherosVendor, 3);
 }
 
-void SendDeviceVersion(int netfd, char *DeviceMac)
+void SendDeviceVersion(int netfd, u_char *DeviceMac)
 {
 	u_int i;
 	u_char outframe[64];
@@ -121,7 +119,7 @@ void SendDeviceVersion(int netfd, char *DeviceMac)
 	write(netfd, outframe, 64);
 }
 
-void SendDeviceReset(int netfd, char *DeviceMac)
+void SendDeviceReset(int netfd, u_char *DeviceMac)
 {
 	u_int i;
 	u_char outframe[64];
@@ -143,7 +141,7 @@ void SendDeviceReset(int netfd, char *DeviceMac)
 	write(netfd, outframe, 64);
 }
 
-void SendNetworkInfo(int netfd, char *DeviceMac)
+void SendNetworkInfo(int netfd, u_char *DeviceMac)
 {
 	u_int i;
 	u_char outframe[64];
@@ -207,7 +205,7 @@ u_char *GetNetworkAnswer(struct NetFrame net, u_int waittime, ushort ReqType)
 	return 0;
 }
 
-int GetDeviceVersion(struct NetFrame net, u_int waittime, char *mac, char *DeviceVerion)
+int GetDeviceVersion(struct NetFrame net, u_int waittime, u_char *mac, char *DeviceVerion)
 {
 	/* read responses */
 	u_char *frameptr = GetNetworkAnswer(net, waittime, 0x1a0);
@@ -375,7 +373,7 @@ void usage(void)
 void ParseOptions(int argc, char *argv[], char *bpfn, char *ifname, u_char *DeviceMac, u_int *TryCount, int *UseNagiosFormat, int *ResetDevice)
 {
 	int ch, i;
-	u_char mac[18];
+	char mac[18];
 
 	/* Parse command line options */
 	while ((ch = getopt(argc, argv, "b:m:c:hnr")) != -1)
@@ -398,12 +396,11 @@ void ParseOptions(int argc, char *argv[], char *bpfn, char *ifname, u_char *Devi
 		case 'm':
 			strncpy(mac, optarg, 17);
 			mac[17] = 0;
-			//				fprintf(stderr, "l:%u", strlen(mac));
 			if (strlen(mac) == 17)
 			{
 				if (strchr(mac, ':') != NULL)
 				{
-					if (!sscanf(mac, "%hh2x:%hh2x:%hh2x:%hh2x:%hh2x:%hh2x", &DeviceMac[0], &DeviceMac[1], &DeviceMac[2], &DeviceMac[3], &DeviceMac[4], &DeviceMac[5]))
+					if (!sscanf(mac, "%2hhx:%2hhx:%2hhx:%2hhx:%2hhx:%2hhx", &DeviceMac[0], &DeviceMac[1], &DeviceMac[2], &DeviceMac[3], &DeviceMac[4], &DeviceMac[5]))
 					{
 						fprintf(stderr, "Ungültige MAC-Adresse: %s\n", optarg);
 						exit(EXIT_FAILURE);
@@ -412,7 +409,7 @@ void ParseOptions(int argc, char *argv[], char *bpfn, char *ifname, u_char *Devi
 				else
 				{
 					if (strchr(mac, '-') != NULL)
-						if (!sscanf(mac, "%hh2x-%hh2x-%hh2x-%hh2x-%hh2x-%hh2x", &DeviceMac[0], &DeviceMac[1], &DeviceMac[2], &DeviceMac[3], &DeviceMac[4], &DeviceMac[5]))
+						if (!sscanf(mac, "%2hhx-%2hhx-%2hhx-%2hhx-%2hhx-%2hhx", &DeviceMac[0], &DeviceMac[1], &DeviceMac[2], &DeviceMac[3], &DeviceMac[4], &DeviceMac[5]))
 						{
 							fprintf(stderr, "Ungültige MAC-Adresse: %s\n", optarg);
 							exit(EXIT_FAILURE);
@@ -421,12 +418,12 @@ void ParseOptions(int argc, char *argv[], char *bpfn, char *ifname, u_char *Devi
 			}
 			else if (strlen(mac) == 12)
 			{
-				u_char digit[3] = {0, 0, 0};
+				char digit[3] = {0, 0, 0};
 				for (i = 0; i < 6; i++)
 				{
 					strncpy(digit, &mac[i * 2], 2);
 					digit[2] = 0;
-					if (!sscanf(digit, "%hh2x", (u_char *)&DeviceMac[i]))
+					if (!sscanf(digit, "%2hhx", (u_char *)&DeviceMac[i]))
 					{
 						fprintf(stderr, "Ungültige MAC-Adresse: %s\n", optarg);
 						exit(EXIT_FAILURE);
